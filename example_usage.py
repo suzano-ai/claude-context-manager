@@ -218,6 +218,80 @@ def example_different_strategies():
         print(f"Message roles remaining: {roles}")
 
 
+def example_search_and_analysis():
+    """Demonstrate message search and conversation analysis."""
+    print("=" * 60)
+    print("EXAMPLE 6: Message Search and Conversation Analysis")
+    print("=" * 60)
+    
+    manager = ContextManager(verbose=False)
+    
+    # Build a multi-turn conversation with metadata
+    manager.add_message(
+        role="system",
+        content="You are a helpful programming assistant.",
+        metadata={"importance": "critical"}
+    )
+    
+    manager.add_message(
+        role="user",
+        content="How do I iterate over a list in Python?",
+        metadata={"category": "python", "difficulty": "beginner"}
+    )
+    
+    manager.add_message(
+        role="assistant",
+        content="You can use a for loop to iterate: for item in my_list: print(item)"
+    )
+    
+    manager.add_message(
+        role="user",
+        content="What about using list comprehensions?",
+        metadata={"category": "python", "difficulty": "intermediate"}
+    )
+    
+    manager.add_message(
+        role="assistant",
+        content="List comprehensions are concise: [x*2 for x in my_list]"
+    )
+    
+    # Search examples
+    print("\n[SEARCH] All user messages:")
+    user_msgs = manager.search_messages(role="user")
+    for msg in user_msgs:
+        print(f"  - {msg.content[:60]}...")
+    
+    print("\n[SEARCH] Messages containing 'Python':")
+    python_msgs = manager.search_messages(content_contains="python")
+    print(f"  Found: {len(python_msgs)} messages")
+    
+    print("\n[SEARCH] Intermediate difficulty messages:")
+    intermediate = manager.search_messages(
+        metadata_filter={"difficulty": "intermediate"}
+    )
+    print(f"  Found: {len(intermediate)} messages")
+    
+    # Conversation analysis
+    print("\n[ANALYSIS] Conversation Health:")
+    analysis = manager.analyze_conversation()
+    print(f"  Total messages: {analysis.total_messages}")
+    print(f"  User messages: {analysis.user_messages}")
+    print(f"  Assistant messages: {analysis.assistant_messages}")
+    print(f"  User/Assistant ratio: {analysis.user_assistant_ratio:.2f}")
+    print(f"  Avg message length: {analysis.avg_message_length:.0f} chars")
+    print(f"  Avg tokens per message: {analysis.avg_tokens_per_message:.1f}")
+    print(f"  Message role distribution: {analysis.message_role_distribution}")
+    
+    # Export summary
+    print("\n[EXPORT] Conversation Summary:")
+    summary = manager.export_summary()
+    print(f"  Model: {summary['model']}")
+    print(f"  Message count: {summary['message_count']}")
+    print(f"  Total tokens: {summary['total_tokens']}")
+    print(f"  Estimated cost: ${summary['estimated_cost']:.6f}")
+    print()
+
+
 if __name__ == "__main__":
     print("\n")
     print("Claude Context Manager - Usage Examples")
@@ -229,6 +303,7 @@ if __name__ == "__main__":
     example_persistence()
     example_api_ready()
     example_different_strategies()
+    example_search_and_analysis()
     
     print("=" * 60)
     print("All examples completed successfully!")

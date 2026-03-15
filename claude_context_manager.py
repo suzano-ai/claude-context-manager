@@ -69,6 +69,26 @@ class ConversationStats:
         return asdict(self)
 
 
+@dataclass
+class ConversationAnalysis:
+    """Analysis of conversation health and patterns."""
+    total_messages: int
+    total_tokens: int
+    avg_message_length: float
+    user_messages: int
+    assistant_messages: int
+    system_messages: int
+    user_assistant_ratio: float
+    longest_message_tokens: int
+    shortest_message_tokens: int
+    avg_tokens_per_message: float
+    message_role_distribution: Dict[str, int]
+    
+    def to_dict(self) -> Dict:
+        """Convert to dict."""
+        return asdict(self)
+
+
 class ContextManager:
     """
     Production-ready context manager for Claude conversations.
@@ -367,6 +387,144 @@ class ContextManager:
             estimated_cost=0.0,
             model=self.model,
         )
+    
+    def search_messages(
+        self,
+        role: Optional[str] = None,
+        content_contains: Optional[str] = None,
+        metadata_filter: Optional[Dict] = None,
+        created_after: Optional[str] = None,
+    ) -> List[Message]:
+        """
+        Search and filter messages by various criteria.
+        
+        Args:
+            role: Filter by role ("user", "assistant", "system")
+            content_contains: Filter by substring in content
+            metadata_filter: Filter by metadata key=value pairs
+            created_after: Filter by creation timestamp (ISO format)
+        
+        Returns:
+            List of matching messages
+        """
+        results = self.messages[:]
+        
+        # Filter by role
+        if role:
+            results = [m for m in results if m.role == role]
+        
+        # Filter by content substring
+        if content_contains:
+            results = [m for m in results if content_contains.lower() in m.content.lower()]
+        
+        # Filter by metadata
+        if metadata_filter:
+            results = [
+                m for m in results
+                if all(m.metadata.get(k) == v for k, v in metadata_filter.items())
+            ]
+        
+        # Filter by creation time
+        if created_after:
+            results = [m for m in results if m.created_at >= created_after]
+        
+        return results
+    
+    def analyze_conversation(self) -> ConversationAnalysis:
+        """
+        Analyze conversation health and patterns.
+        
+        Returns metrics about message distribution, token usage, and conversation balance.
+        """
+        if not self.messages:
+            return ConversationAnalysis(
+                total_messages=0,
+                total_tokens=0,
+                avg_message_length=0,
+                user_messages=0,
+                assistant_messages=0,
+                system_messages=0,
+                user_assistant_ratio=0,
+                longest_message_tokens=0,
+                shortest_message_tokens=0,
+                avg_tokens_per_message=0,
+                message_role_distribution={},
+            )
+        
+        # Count messages by role
+        role_counts = {}
+        total_content_length = 0
+        token_counts = []
+        
+        for msg in self.messages:
+            role_counts[msg.role] = role_counts.get(msg.role, 0) + 1
+            total_content_length += len(msg.content)
+            if msg.token_count:
+                token_counts.append(msg.token_count)
+        
+        user_count = role_counts.get("user", 0)
+        assistant_count = role_counts.get("assistant", 0)
+        system_count = role_counts.get("system", 0)
+        
+        # Calculate ratio (avoid division by zero)
+        ratio = (
+            user_count / assistant_count 
+            if assistant_count > 0 
+            else 0
+        )
+        
+        # Token statistics
+        max_tokens = max(token_counts) if token_counts else 0
+        min_tokens = min(token_counts) if token_counts else 0
+        avg_tokens = sum(token_counts) / len(token_counts) if token_counts else 0
+        
+        return ConversationAnalysis(
+            total_messages=len(self.messages),
+            total_tokens=self.stats.total_tokens,
+            avg_message_length=total_content_length / len(self.messages),
+            user_messages=user_count,
+            assistant_messages=assistant_count,
+            system_messages=system_count,
+            user_assistant_ratio=ratio,
+            longest_message_tokens=max_tokens,
+            shortest_message_tokens=min_tokens,
+            avg_tokens_per_message=avg_tokens,
+            message_role_distribution=role_counts,
+        )
+    
+    def export_summary(self) -> Dict:
+        """
+        Export a concise summary of the conversation for review/archival.
+        
+        Returns:
+            Dictionary with summary including metadata, stats, and message abstracts
+        """
+        analysis = self.analyze_conversation()
+        
+        # Create message summaries (first 100 chars of content)
+        message_summaries = [
+            {
+                "role": msg.role,
+                "preview": msg.content[:100] + ("..." if len(msg.content) > 100 else ""),
+                "tokens": msg.token_count,
+                "timestamp": msg.created_at,
+            }
+            for msg in self.messages
+        ]
+        
+        return {
+            "model": self.model,
+            "created_at": datetime.utcnow().isoformat(),
+            "message_count": len(self.messages),
+            "total_tokens": self.stats.total_tokens,
+            "estimated_cost": self.stats.estimated_cost,
+            "analysis": analysis.to_dict(),
+            "messages": message_summaries,
+            "trim_history": {
+                "times_trimmed": self.stats.trimmed_count,
+                "last_trimmed_at": self.stats.last_trimmed_at,
+            },
+        }
     
     def __repr__(self) -> str:
         return (
