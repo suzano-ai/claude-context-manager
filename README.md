@@ -18,7 +18,8 @@ Developers using Claude API (or any LLM) face recurring issues:
 
 ✅ **Accurate token counting** - Claude-aware token calculations with message overhead  
 ✅ **4 trimming strategies** - OLDEST_FIRST, SLIDING_WINDOW, SMART, SUMMARIZE-ready  
-✅ **Cost tracking** - Real-time cost estimation for conversations  
+✅ **Cost tracking** - Real-time cost estimation for conversations + Batch API pricing support  
+✅ **Smart pricing comparison** - Automatically compare Standard vs Batch API costs  
 ✅ **Persistence** - Save/load conversation state to JSON  
 ✅ **Production-ready** - 100+ lines, extensively tested, zero external dependencies beyond Anthropic SDK  
 
@@ -102,6 +103,24 @@ print(f"Estimated cost: ${stats.estimated_cost:.6f}")
 # - claude-3-sonnet  
 # - claude-3-haiku
 # - claude-3-5-sonnet
+# - claude-3-5-haiku
+```
+
+### Batch API Support & Cost Comparison
+
+```python
+# Initialize with Batch API pricing (50% discount)
+manager = ContextManager(
+    model="claude-3-5-sonnet",
+    use_batch_api=True  # Uses discounted Batch API rates
+)
+
+# Compare costs between Standard and Batch API
+comparison = manager.compare_pricing()
+print(f"Standard API: ${comparison['standard_api']['cost']:.4f}")
+print(f"Batch API: ${comparison['batch_api']['cost']:.4f}")
+print(f"Savings: ${comparison['savings']['amount']:.4f} ({comparison['savings']['percent']:.1f}%)")
+# Output: "Use Batch API" recommendation for offline workloads
 ```
 
 ### Conversation Persistence
@@ -140,9 +159,18 @@ ContextManager(
     max_tokens: int = 200000,
     trim_strategy: TrimStrategy = TrimStrategy.SMART,
     trim_threshold: float = 0.85,
-    verbose: bool = False
+    verbose: bool = False,
+    use_batch_api: bool = False
 )
 ```
+
+**Parameters:**
+- `model`: Claude model name (supports claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-3-5-sonnet, claude-3-5-haiku)
+- `max_tokens`: Context window limit
+- `trim_strategy`: How to trim conversations (OLDEST_FIRST, SLIDING_WINDOW, SMART, SUMMARIZE)
+- `trim_threshold`: Percentage of max_tokens before triggering trim (0.0-1.0)
+- `verbose`: Print debug messages
+- `use_batch_api`: Use Batch API pricing (50% discount, 24h latency)
 
 #### Methods
 
@@ -156,6 +184,7 @@ ContextManager(
 - **load_from_file(filepath: str)** - Load from JSON
 - **get_stats() → ConversationStats** - Get token/cost statistics
 - **count_tokens(text: str) → int** - Count tokens in arbitrary text
+- **compare_pricing(tokens=None) → Dict** - Compare Standard vs Batch API costs with recommendations
 - **clear()** - Reset conversation
 
 ## Real-World Usage

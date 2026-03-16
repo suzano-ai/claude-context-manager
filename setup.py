@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="claude-context-manager",
-    version="0.2.0",
+    version="0.3.0",
     author="Suzano AI",
     description="Production-ready conversation management for Claude API with automatic token tracking and context trimming.",
     long_description=long_description,

@@ -100,12 +100,22 @@ class ContextManager:
     - Message persistence and recovery
     """
     
-    # Claude API pricing (updates needed for newer models)
+    # Claude API pricing (Standard API rates per 1M tokens)
     PRICING = {
         "claude-3-opus": {"input": 0.015, "output": 0.075},
         "claude-3-sonnet": {"input": 0.003, "output": 0.015},
         "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
         "claude-3-5-sonnet": {"input": 0.003, "output": 0.015},
+        "claude-3-5-haiku": {"input": 0.00080, "output": 0.0040},
+    }
+    
+    # Batch API pricing (50% discount on standard rates)
+    BATCH_PRICING = {
+        "claude-3-opus": {"input": 0.0075, "output": 0.0375},
+        "claude-3-sonnet": {"input": 0.0015, "output": 0.0075},
+        "claude-3-haiku": {"input": 0.000125, "output": 0.000625},
+        "claude-3-5-sonnet": {"input": 0.0015, "output": 0.0075},
+        "claude-3-5-haiku": {"input": 0.00040, "output": 0.0020},
     }
     
     def __init__(
@@ -115,6 +125,7 @@ class ContextManager:
         trim_strategy: TrimStrategy = TrimStrategy.SMART,
         trim_threshold: float = 0.85,
         verbose: bool = False,
+        use_batch_api: bool = False,
     ):
         """
         Initialize context manager.
@@ -125,12 +136,14 @@ class ContextManager:
             trim_strategy: How to trim when approaching limit
             trim_threshold: Trim when reaching this % of max_tokens (0-1.0)
             verbose: Print debug info
+            use_batch_api: Use Batch API pricing (50% discount, but 24h latency)
         """
         self.model = model
         self.max_tokens = max_tokens
         self.trim_strategy = trim_strategy
         self.trim_threshold = int(max_tokens * trim_threshold)
         self.verbose = verbose
+        self.use_batch_api = use_batch_api
         
         # Initialize tokenizer for this model
         try:
@@ -209,7 +222,8 @@ class ContextManager:
     
     def _update_cost(self) -> None:
         """Estimate conversation cost based on current tokens."""
-        pricing = self.PRICING.get(self.model)
+        pricing_table = self.BATCH_PRICING if self.use_batch_api else self.PRICING
+        pricing = pricing_table.get(self.model)
         if pricing:
             # Rough estimate: assume 50/50 input/output split
             avg_tokens = self.stats.total_tokens
@@ -491,6 +505,60 @@ class ContextManager:
             avg_tokens_per_message=avg_tokens,
             message_role_distribution=role_counts,
         )
+    
+    def compare_pricing(self, tokens: Optional[int] = None) -> Dict:
+        """
+        Compare cost between Standard and Batch API for given tokens.
+        
+        Args:
+            tokens: Token count to compare (default: current conversation)
+        
+        Returns:
+            Dictionary with standard_cost, batch_cost, and savings info
+        """
+        if tokens is None:
+            tokens = self.stats.total_tokens
+        
+        standard_pricing = self.PRICING.get(self.model)
+        batch_pricing = self.BATCH_PRICING.get(self.model)
+        
+        if not standard_pricing or not batch_pricing:
+            return {"error": f"Pricing not available for model {self.model}"}
+        
+        # Assume 50/50 input/output split
+        standard_cost = (
+            (tokens * 0.5 * standard_pricing["input"]) +
+            (tokens * 0.5 * standard_pricing["output"])
+        ) / 1000
+        
+        batch_cost = (
+            (tokens * 0.5 * batch_pricing["input"]) +
+            (tokens * 0.5 * batch_pricing["output"])
+        ) / 1000
+        
+        savings = standard_cost - batch_cost
+        savings_percent = (savings / standard_cost * 100) if standard_cost > 0 else 0
+        
+        return {
+            "tokens": tokens,
+            "model": self.model,
+            "standard_api": {
+                "cost": standard_cost,
+                "input_rate": standard_pricing["input"],
+                "output_rate": standard_pricing["output"],
+            },
+            "batch_api": {
+                "cost": batch_cost,
+                "input_rate": batch_pricing["input"],
+                "output_rate": batch_pricing["output"],
+            },
+            "savings": {
+                "amount": savings,
+                "percent": savings_percent,
+            },
+            "break_even_hours": 24 if savings > 0 else None,
+            "recommendation": "Use Batch API" if savings > 0.01 else "Use Standard API for real-time needs",
+        }
     
     def export_summary(self) -> Dict:
         """
