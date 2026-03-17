@@ -13,7 +13,7 @@ import json
 import tiktoken
 from typing import List, Dict, Optional, Literal, Tuple
 from dataclasses import dataclass, asdict, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 
@@ -40,7 +40,7 @@ class Message:
     content: str
     metadata: Dict = field(default_factory=dict)
     token_count: Optional[int] = None
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> Dict:
         """Convert to API-compatible dict."""
@@ -266,7 +266,7 @@ class ContextManager:
         # Recalculate stats
         self.stats.total_tokens = sum(m.token_count or 0 for m in self.messages)
         self.stats.trimmed_count += len(removed)
-        self.stats.last_trimmed_at = datetime.utcnow().isoformat()
+        self.stats.last_trimmed_at = datetime.now(timezone.utc).isoformat()
         self._update_cost()
         
         if self.verbose:
@@ -279,16 +279,20 @@ class ContextManager:
         """Remove oldest messages first."""
         removed = []
         current_tokens = self.stats.total_tokens
+        keep = []
         
         # Never remove system messages or most recent message
-        for i, msg in enumerate(self.messages[:-1]):
-            if msg.role == "system" or current_tokens <= target_tokens:
-                continue
-            
-            current_tokens -= (msg.token_count or 0)
-            self.messages.pop(i)
-            removed.append(msg)
+        messages_to_check = self.messages[:-1] if len(self.messages) > 1 else []
+        last_message = [self.messages[-1]] if self.messages else []
         
+        for msg in messages_to_check:
+            if msg.role == "system" or current_tokens <= target_tokens:
+                keep.append(msg)
+            else:
+                current_tokens -= (msg.token_count or 0)
+                removed.append(msg)
+        
+        self.messages = keep + last_message
         return removed
     
     def _trim_sliding_window(self, target_tokens: int) -> List[Message]:
@@ -582,7 +586,7 @@ class ContextManager:
         
         return {
             "model": self.model,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "message_count": len(self.messages),
             "total_tokens": self.stats.total_tokens,
             "estimated_cost": self.stats.estimated_cost,

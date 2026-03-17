@@ -271,6 +271,24 @@ for item in large_dataset:
 - Verify the model parameter matches your actual API model
 - Remember costs are estimates based on 50/50 input/output token split
 
+## Testing
+
+Full pytest test suite with **108 tests** covering all features:
+
+```bash
+pip install pytest
+python -m pytest tests/ -v
+```
+
+Test areas:
+- Token counting (accuracy, unicode, edge cases)
+- All trimming strategies (OLDEST_FIRST, SLIDING_WINDOW, SMART)
+- Cost estimation and Batch API comparison
+- Persistence (save/load roundtrip)
+- Message search and filtering
+- Conversation analysis
+- Edge cases (empty convos, stress tests, all models)
+
 ## Contributing
 
 Issues and PRs welcome. Main areas for contribution:
