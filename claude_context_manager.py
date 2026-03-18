@@ -63,7 +63,7 @@ class ConversationStats:
     model: str
     last_trimmed_at: Optional[str] = None
     trimmed_count: int = 0
-    
+
     def to_dict(self) -> Dict:
         """Convert to dict."""
         return asdict(self)
@@ -83,7 +83,7 @@ class ConversationAnalysis:
     shortest_message_tokens: int
     avg_tokens_per_message: float
     message_role_distribution: Dict[str, int]
-    
+
     def to_dict(self) -> Dict:
         """Convert to dict."""
         return asdict(self)
@@ -92,14 +92,14 @@ class ConversationAnalysis:
 class ContextManager:
     """
     Production-ready context manager for Claude conversations.
-    
+
     Handles:
     - Token counting with Claude-specific logic
     - Conversation trimming with configurable strategies
     - Cost estimation and tracking
     - Message persistence and recovery
     """
-    
+
     # Claude API pricing (Standard API rates per 1M tokens)
     PRICING = {
         "claude-3-opus": {"input": 0.015, "output": 0.075},
@@ -108,7 +108,7 @@ class ContextManager:
         "claude-3-5-sonnet": {"input": 0.003, "output": 0.015},
         "claude-3-5-haiku": {"input": 0.00080, "output": 0.0040},
     }
-    
+
     # Batch API pricing (50% discount on standard rates)
     BATCH_PRICING = {
         "claude-3-opus": {"input": 0.0075, "output": 0.0375},
@@ -117,7 +117,7 @@ class ContextManager:
         "claude-3-5-sonnet": {"input": 0.0015, "output": 0.0075},
         "claude-3-5-haiku": {"input": 0.00040, "output": 0.0020},
     }
-    
+
     def __init__(
         self,
         model: str = "claude-3-5-sonnet",
@@ -129,7 +129,7 @@ class ContextManager:
     ):
         """
         Initialize context manager.
-        
+
         Args:
             model: Claude model to use for token calculations
             max_tokens: Maximum context window size (default: 200k for Sonnet)
@@ -144,7 +144,7 @@ class ContextManager:
         self.trim_threshold = int(max_tokens * trim_threshold)
         self.verbose = verbose
         self.use_batch_api = use_batch_api
-        
+
         # Initialize tokenizer for this model
         try:
             self.encoder = tiktoken.encoding_for_model(
@@ -153,7 +153,7 @@ class ContextManager:
         except KeyError:
             # Fallback to cl100k_base for unknown models
             self.encoder = tiktoken.get_encoding("cl100k_base")
-        
+
         self.messages: List[Message] = []
         self.stats = ConversationStats(
             total_messages=0,
@@ -161,7 +161,7 @@ class ContextManager:
             estimated_cost=0.0,
             model=model,
         )
-    
+
     @staticmethod
     def _map_model_to_tiktoken(model: str) -> str:
         """Map Claude model name to tiktoken equivalent."""
@@ -172,54 +172,54 @@ class ContextManager:
             "claude-3-5-sonnet": "gpt-4-turbo",
         }
         return mapping.get(model, "gpt-3.5-turbo")
-    
+
     def count_tokens(self, text: str) -> int:
         """
         Count tokens in text with Claude-appropriate logic.
-        
+
         Claude's tokenization is slightly different from GPT models.
         This includes overhead for message formatting.
         """
         # Count base tokens
         tokens = len(self.encoder.encode(text))
-        
+
         # Add ~4 tokens per message for role/formatting overhead
         # This matches Claude's actual behavior more closely
         tokens += 4
-        
+
         return tokens
-    
+
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None) -> Message:
         """
         Add message to conversation with token counting.
-        
+
         Args:
             role: "user", "assistant", or "system"
             content: Message content
             metadata: Optional metadata (tags, importance, etc.)
-        
+
         Returns:
             Created Message object
         """
         token_count = self.count_tokens(content)
-        
+
         message = Message(
             role=role,
             content=content,
             token_count=token_count,
             metadata=metadata or {},
         )
-        
+
         self.messages.append(message)
         self.stats.total_messages += 1
         self.stats.total_tokens += token_count
         self._update_cost()
-        
+
         if self.verbose:
             print(f"[+] Added {role} message: {token_count} tokens")
-        
+
         return message
-    
+
     def _update_cost(self) -> None:
         """Estimate conversation cost based on current tokens."""
         pricing_table = self.BATCH_PRICING if self.use_batch_api else self.PRICING
@@ -231,76 +231,84 @@ class ContextManager:
                 (avg_tokens * 0.5 * pricing["input"]) +
                 (avg_tokens * 0.5 * pricing["output"])
             ) / 1000
-    
+
     def should_trim(self) -> bool:
         """Check if conversation exceeds trim threshold."""
         return self.stats.total_tokens > self.trim_threshold
-    
+
     def trim_conversation(self, target_tokens: Optional[int] = None) -> Tuple[int, List[Message]]:
         """
         Trim conversation to fit within limits.
-        
+
         Args:
             target_tokens: Target token count (default: 60% of max)
-        
+
         Returns:
             Tuple of (tokens_removed, removed_messages)
         """
         if target_tokens is None:
             target_tokens = int(self.max_tokens * 0.6)
-        
+
         if self.stats.total_tokens <= target_tokens:
             if self.verbose:
                 print("[-] No trimming needed")
             return 0, []
-        
+
         removed = []
-        
+
         if self.trim_strategy == TrimStrategy.OLDEST_FIRST:
             removed = self._trim_oldest_first(target_tokens)
         elif self.trim_strategy == TrimStrategy.SLIDING_WINDOW:
             removed = self._trim_sliding_window(target_tokens)
         elif self.trim_strategy == TrimStrategy.SMART:
             removed = self._trim_smart(target_tokens)
-        
+
         # Recalculate stats
         self.stats.total_tokens = sum(m.token_count or 0 for m in self.messages)
         self.stats.trimmed_count += len(removed)
         self.stats.last_trimmed_at = datetime.now(timezone.utc).isoformat()
         self._update_cost()
-        
+
         if self.verbose:
             total_removed = sum(m.token_count or 0 for m in removed)
             print(f"[*] Trimmed {len(removed)} messages ({total_removed} tokens)")
-        
+
         return sum(m.token_count or 0 for m in removed), removed
-    
+
     def _trim_oldest_first(self, target_tokens: int) -> List[Message]:
         """Remove oldest messages first."""
         removed = []
         current_tokens = self.stats.total_tokens
         keep = []
-        
+
         # Never remove system messages or most recent message
         messages_to_check = self.messages[:-1] if len(self.messages) > 1 else []
         last_message = [self.messages[-1]] if self.messages else []
-        
-        for msg in messages_to_check:
-            if msg.role == "system" or current_tokens <= target_tokens:
+
+        # Always preserve system messages at the start
+        system_msgs = [m for m in messages_to_check if m.role == MessageRole.SYSTEM]
+        non_system = [m for m in messages_to_check if m.role != MessageRole.SYSTEM]
+
+        # Start with system messages in keep
+        keep.extend(system_msgs)
+
+        for msg in non_system:
+            if current_tokens <= target_tokens:
                 keep.append(msg)
             else:
                 current_tokens -= (msg.token_count or 0)
                 removed.append(msg)
-        
+
+        # Append the most recent message (if any)
         self.messages = keep + last_message
         return removed
-    
+
     def _trim_sliding_window(self, target_tokens: int) -> List[Message]:
         """Keep only recent messages within token limit."""
         removed = []
         current_tokens = 0
         kept = []
-        
+
         # Work backwards from most recent
         for msg in reversed(self.messages):
             msg_tokens = msg.token_count or 0
@@ -309,19 +317,19 @@ class ContextManager:
                 current_tokens += msg_tokens
             else:
                 removed.append(msg)
-        
+
         kept.reverse()
         removed.reverse()
-        
+
         # Keep system messages always
         system_msgs = [m for m in self.messages if m.role == "system"]
         if system_msgs and system_msgs[0] not in kept:
             kept = system_msgs + kept
             removed = [m for m in removed if m not in system_msgs]
-        
+
         self.messages = kept
         return removed
-    
+
     def _trim_smart(self, target_tokens: int) -> List[Message]:
         """
         Smart trimming: preserve system messages and recent context,
@@ -330,11 +338,11 @@ class ContextManager:
         removed = []
         system_msgs = [m for m in self.messages if m.role == "system"]
         content_msgs = [m for m in self.messages if m.role != "system"]
-        
+
         # Always keep system messages
         kept = system_msgs[:]
         current_tokens = sum(m.token_count or 0 for m in kept)
-        
+
         # Add messages from most recent backwards
         for msg in reversed(content_msgs):
             msg_tokens = msg.token_count or 0
@@ -343,15 +351,15 @@ class ContextManager:
                 current_tokens += msg_tokens
             else:
                 removed.append(msg)
-        
+
         removed.reverse()
         self.messages = kept
         return removed
-    
+
     def get_messages_for_api(self) -> List[Dict]:
         """Get messages in format ready for Claude API."""
         return [msg.to_dict() for msg in self.messages]
-    
+
     def get_conversation_state(self) -> Dict:
         """Get full conversation state for persistence."""
         return {
@@ -362,40 +370,40 @@ class ContextManager:
             "messages": [msg.to_serializable() for msg in self.messages],
             "stats": self.stats.to_dict(),
         }
-    
+
     def load_conversation_state(self, state: Dict) -> None:
         """Restore conversation from saved state."""
         self.model = state.get("model", self.model)
         self.max_tokens = state.get("max_tokens", self.max_tokens)
         self.trim_strategy = TrimStrategy(state.get("trim_strategy", self.trim_strategy.value))
         self.trim_threshold = state.get("trim_threshold", self.trim_threshold)
-        
+
         # Restore messages
         self.messages = []
         for msg_data in state.get("messages", []):
             msg = Message(**msg_data)
             self.messages.append(msg)
-        
+
         # Restore stats
         stats_data = state.get("stats", {})
         self.stats = ConversationStats(**stats_data)
-    
+
     def save_to_file(self, filepath: str) -> None:
         """Save conversation to JSON file."""
         state = self.get_conversation_state()
         with open(filepath, 'w') as f:
             json.dump(state, f, indent=2)
-    
+
     def load_from_file(self, filepath: str) -> None:
         """Load conversation from JSON file."""
         with open(filepath, 'r') as f:
             state = json.load(f)
         self.load_conversation_state(state)
-    
+
     def get_stats(self) -> ConversationStats:
         """Get current conversation statistics."""
         return self.stats
-    
+
     def clear(self) -> None:
         """Clear conversation."""
         self.messages = []
@@ -405,7 +413,7 @@ class ContextManager:
             estimated_cost=0.0,
             model=self.model,
         )
-    
+
     def search_messages(
         self,
         role: Optional[str] = None,
@@ -415,43 +423,43 @@ class ContextManager:
     ) -> List[Message]:
         """
         Search and filter messages by various criteria.
-        
+
         Args:
             role: Filter by role ("user", "assistant", "system")
             content_contains: Filter by substring in content
             metadata_filter: Filter by metadata key=value pairs
             created_after: Filter by creation timestamp (ISO format)
-        
+
         Returns:
             List of matching messages
         """
         results = self.messages[:]
-        
+
         # Filter by role
         if role:
             results = [m for m in results if m.role == role]
-        
+
         # Filter by content substring
         if content_contains:
             results = [m for m in results if content_contains.lower() in m.content.lower()]
-        
+
         # Filter by metadata
         if metadata_filter:
             results = [
                 m for m in results
                 if all(m.metadata.get(k) == v for k, v in metadata_filter.items())
             ]
-        
+
         # Filter by creation time
         if created_after:
             results = [m for m in results if m.created_at >= created_after]
-        
+
         return results
-    
+
     def analyze_conversation(self) -> ConversationAnalysis:
         """
         Analyze conversation health and patterns.
-        
+
         Returns metrics about message distribution, token usage, and conversation balance.
         """
         if not self.messages:
@@ -468,34 +476,34 @@ class ContextManager:
                 avg_tokens_per_message=0,
                 message_role_distribution={},
             )
-        
+
         # Count messages by role
         role_counts = {}
         total_content_length = 0
         token_counts = []
-        
+
         for msg in self.messages:
             role_counts[msg.role] = role_counts.get(msg.role, 0) + 1
             total_content_length += len(msg.content)
             if msg.token_count:
                 token_counts.append(msg.token_count)
-        
+
         user_count = role_counts.get("user", 0)
         assistant_count = role_counts.get("assistant", 0)
         system_count = role_counts.get("system", 0)
-        
+
         # Calculate ratio (avoid division by zero)
         ratio = (
-            user_count / assistant_count 
-            if assistant_count > 0 
+            user_count / assistant_count
+            if assistant_count > 0
             else 0
         )
-        
+
         # Token statistics
         max_tokens = max(token_counts) if token_counts else 0
         min_tokens = min(token_counts) if token_counts else 0
         avg_tokens = sum(token_counts) / len(token_counts) if token_counts else 0
-        
+
         return ConversationAnalysis(
             total_messages=len(self.messages),
             total_tokens=self.stats.total_tokens,
@@ -509,40 +517,40 @@ class ContextManager:
             avg_tokens_per_message=avg_tokens,
             message_role_distribution=role_counts,
         )
-    
+
     def compare_pricing(self, tokens: Optional[int] = None) -> Dict:
         """
         Compare cost between Standard and Batch API for given tokens.
-        
+
         Args:
             tokens: Token count to compare (default: current conversation)
-        
+
         Returns:
             Dictionary with standard_cost, batch_cost, and savings info
         """
         if tokens is None:
             tokens = self.stats.total_tokens
-        
+
         standard_pricing = self.PRICING.get(self.model)
         batch_pricing = self.BATCH_PRICING.get(self.model)
-        
+
         if not standard_pricing or not batch_pricing:
             return {"error": f"Pricing not available for model {self.model}"}
-        
+
         # Assume 50/50 input/output split
         standard_cost = (
             (tokens * 0.5 * standard_pricing["input"]) +
             (tokens * 0.5 * standard_pricing["output"])
         ) / 1000
-        
+
         batch_cost = (
             (tokens * 0.5 * batch_pricing["input"]) +
             (tokens * 0.5 * batch_pricing["output"])
         ) / 1000
-        
+
         savings = standard_cost - batch_cost
         savings_percent = (savings / standard_cost * 100) if standard_cost > 0 else 0
-        
+
         return {
             "tokens": tokens,
             "model": self.model,
@@ -563,16 +571,16 @@ class ContextManager:
             "break_even_hours": 24 if savings > 0 else None,
             "recommendation": "Use Batch API" if savings > 0.01 else "Use Standard API for real-time needs",
         }
-    
+
     def export_summary(self) -> Dict:
         """
         Export a concise summary of the conversation for review/archival.
-        
+
         Returns:
             Dictionary with summary including metadata, stats, and message abstracts
         """
         analysis = self.analyze_conversation()
-        
+
         # Create message summaries (first 100 chars of content)
         message_summaries = [
             {
@@ -583,7 +591,7 @@ class ContextManager:
             }
             for msg in self.messages
         ]
-        
+
         return {
             "model": self.model,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -597,7 +605,7 @@ class ContextManager:
                 "last_trimmed_at": self.stats.last_trimmed_at,
             },
         }
-    
+
     def __repr__(self) -> str:
         return (
             f"ContextManager(model={self.model}, messages={self.stats.total_messages}, "
