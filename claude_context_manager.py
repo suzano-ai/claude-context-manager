@@ -170,22 +170,34 @@ class ContextManager:
             "claude-3-sonnet": "gpt-3.5-turbo",
             "claude-3-haiku": "gpt-3.5-turbo",
             "claude-3-5-sonnet": "gpt-4-turbo",
+            "claude-3-5-haiku": "gpt-3.5-turbo",
         }
         return mapping.get(model, "gpt-3.5-turbo")
     
-    def count_tokens(self, text: str) -> int:
+    def count_tokens(self, text: str, role: Optional[str] = None) -> int:
         """
         Count tokens in text with Claude-appropriate logic.
         
         Claude's tokenization is slightly different from GPT models.
         This includes overhead for message formatting.
+
+        Args:
+            text: Message text to count tokens for.
+            role: Optional role to adjust per-message overhead ("system", "user", "assistant").
         """
         # Count base tokens
         tokens = len(self.encoder.encode(text))
         
-        # Add ~4 tokens per message for role/formatting overhead
-        # This matches Claude's actual behavior more closely
-        tokens += 4
+        # Add per-message overhead depending on role. System messages often include extra framing.
+        overhead = 4
+        if role == "system":
+            overhead = 6
+        elif role == "assistant":
+            overhead = 2
+        elif role == "user":
+            overhead = 4
+        
+        tokens += overhead
         
         return tokens
     
