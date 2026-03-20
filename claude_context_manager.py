@@ -107,6 +107,8 @@ class ContextManager:
         "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
         "claude-3-5-sonnet": {"input": 0.003, "output": 0.015},
         "claude-3-5-haiku": {"input": 0.00080, "output": 0.0040},
+        "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
+        "claude-opus-4-20250514": {"input": 0.015, "output": 0.075},
     }
     
     # Batch API pricing (50% discount on standard rates)
@@ -116,6 +118,8 @@ class ContextManager:
         "claude-3-haiku": {"input": 0.000125, "output": 0.000625},
         "claude-3-5-sonnet": {"input": 0.0015, "output": 0.0075},
         "claude-3-5-haiku": {"input": 0.00040, "output": 0.0020},
+        "claude-sonnet-4-20250514": {"input": 0.0015, "output": 0.0075},
+        "claude-opus-4-20250514": {"input": 0.0075, "output": 0.0375},
     }
     
     def __init__(
@@ -171,6 +175,8 @@ class ContextManager:
             "claude-3-haiku": "gpt-3.5-turbo",
             "claude-3-5-sonnet": "gpt-4-turbo",
             "claude-3-5-haiku": "gpt-3.5-turbo",
+            "claude-sonnet-4-20250514": "gpt-4-turbo",
+            "claude-opus-4-20250514": "gpt-4",
         }
         return mapping.get(model, "gpt-3.5-turbo")
     
@@ -213,7 +219,7 @@ class ContextManager:
         Returns:
             Created Message object
         """
-        token_count = self.count_tokens(content)
+        token_count = self.count_tokens(content, role=role)
         
         message = Message(
             role=role,

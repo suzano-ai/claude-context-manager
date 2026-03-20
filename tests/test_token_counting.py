@@ -59,3 +59,47 @@ class TestTokenCounting:
         cm = ContextManager(model="claude-3-5-haiku")
         tokens = cm.count_tokens("Fallback encoding test")
         assert tokens > 4
+
+    def test_role_overhead_applied(self, cm):
+        """Different roles should produce different token counts due to overhead."""
+        text = "Same content for all roles"
+        system_tokens = cm.count_tokens(text, role="system")
+        user_tokens = cm.count_tokens(text, role="user")
+        assistant_tokens = cm.count_tokens(text, role="assistant")
+        # system has overhead 6, user 4, assistant 2
+        assert system_tokens > user_tokens
+        assert user_tokens > assistant_tokens
+
+    def test_add_message_uses_role_overhead(self):
+        """add_message should pass role to count_tokens for accurate overhead."""
+        cm = ContextManager()
+        text = "Test message content"
+        msg_user = cm.add_message("user", text)
+        cm.clear()
+        msg_assistant = cm.add_message("assistant", text)
+        cm.clear()
+        msg_system = cm.add_message("system", text)
+        # system (6) > user (4) > assistant (2)
+        assert msg_system.token_count > msg_user.token_count
+        assert msg_user.token_count > msg_assistant.token_count
+
+
+class TestClaude4Models:
+    """Verify Claude 4 model support."""
+
+    @pytest.mark.parametrize("model", [
+        "claude-sonnet-4-20250514",
+        "claude-opus-4-20250514",
+    ])
+    def test_claude4_initialization(self, model):
+        cm = ContextManager(model=model)
+        cm.add_message("user", "Hello Claude 4")
+        assert cm.stats.total_tokens > 0
+
+    @pytest.mark.parametrize("model", [
+        "claude-sonnet-4-20250514",
+        "claude-opus-4-20250514",
+    ])
+    def test_claude4_has_pricing(self, model):
+        assert model in ContextManager.PRICING
+        assert model in ContextManager.BATCH_PRICING
