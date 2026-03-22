@@ -109,6 +109,10 @@ class ContextManager:
         "claude-3-5-haiku": {"input": 0.00080, "output": 0.0040},
         "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
         "claude-opus-4-20250514": {"input": 0.015, "output": 0.075},
+        # aliases for Claude 4 family
+        "claude-4": {"input": 0.003, "output": 0.015},
+        "claude-4-sonnet": {"input": 0.003, "output": 0.015},
+        "claude-4-opus": {"input": 0.015, "output": 0.075},
     }
     
     # Batch API pricing (50% discount on standard rates)
@@ -120,6 +124,10 @@ class ContextManager:
         "claude-3-5-haiku": {"input": 0.00040, "output": 0.0020},
         "claude-sonnet-4-20250514": {"input": 0.0015, "output": 0.0075},
         "claude-opus-4-20250514": {"input": 0.0075, "output": 0.0375},
+        # aliases for Claude 4 family
+        "claude-4": {"input": 0.0015, "output": 0.0075},
+        "claude-4-sonnet": {"input": 0.0015, "output": 0.0075},
+        "claude-4-opus": {"input": 0.0075, "output": 0.0375},
     }
     
     def __init__(
@@ -177,6 +185,10 @@ class ContextManager:
             "claude-3-5-haiku": "gpt-3.5-turbo",
             "claude-sonnet-4-20250514": "gpt-4-turbo",
             "claude-opus-4-20250514": "gpt-4",
+            # Map Claude 4 aliases
+            "claude-4": "gpt-4-turbo",
+            "claude-4-sonnet": "gpt-4-turbo",
+            "claude-4-opus": "gpt-4",
         }
         return mapping.get(model, "gpt-3.5-turbo")
     
